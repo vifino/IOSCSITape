@@ -20,6 +20,8 @@
 #include "IOSCSITape.h"
 #include "custom_mtio.h"
 
+#include "require.h"
+
 #define GROW_FACTOR 10
 #define SCSI_MOTION_TIMEOUT   (kThirtySecondTimeoutInMS * 2 * 5)
 #define SCSI_NOMOTION_TIMEOUT  kTenSecondTimeoutInMS
@@ -91,7 +93,7 @@ CdevMajorIniter::~CdevMajorIniter(void)
 }
 
 /* character device system call vectors */
-struct cdevsw CdevMajorIniter::cdevsw = 
+struct cdevsw CdevMajorIniter::cdevsw =
 {
 	st_open,
 	st_close,
@@ -112,26 +114,26 @@ struct cdevsw CdevMajorIniter::cdevsw =
 static CdevMajorIniter CdevMajorIniter;
 
 IOSCSITape **IOSCSITape::devices = NULL;
-int IOSCSITape::deviceCount = 0; 
+int IOSCSITape::deviceCount = 0;
 
 bool
 IOSCSITape::FindDeviceMinorNumber(void)
 {
 	int i;
-	
+
 	if (deviceCount == 0)
 		if (!GrowDeviceMinorNumberMemory())
 			return false;
-	
+
 	for (i = 0; i < deviceCount && devices[i]; i++);
-	
+
 	if (i == deviceCount)
 		if (!GrowDeviceMinorNumberMemory())
 			return false;
-	
+
 	tapeNumber = i;
 	devices[tapeNumber] = this;
-	
+
 	return true;
 }
 
@@ -141,23 +143,23 @@ IOSCSITape::GrowDeviceMinorNumberMemory(void)
 	IOSCSITape **newDevices;
 	int cur_size = sizeof(IOSCSITape *) *  deviceCount;
 	int new_size = sizeof(IOSCSITape *) * (deviceCount + GROW_FACTOR);
-	
+
 	newDevices = (IOSCSITape **)IOMalloc(new_size);
-	
+
 	if (!newDevices)
 		return false;
-	
+
 	bzero(newDevices, new_size);
-	
+
 	if (deviceCount)
 	{
 		memcpy(newDevices, devices, cur_size);
 		IOFree(devices, cur_size);
 	}
-	
+
 	devices = newDevices;
 	deviceCount += GROW_FACTOR;
-	
+
 	return true;
 }
 
@@ -174,21 +176,21 @@ IOSCSITape::InitializeDeviceSupport(void)
 	if (FindDeviceMinorNumber())
 	{
 		cdev_node = devfs_make_node(
-									makedev(CdevMajorIniter.majorNumber, tapeNumber), 
+									makedev(CdevMajorIniter.majorNumber, tapeNumber),
 									DEVFS_CHAR,
 									UID_ROOT,
 									GID_OPERATOR,
 									0664,
 									TAPE_FORMAT, tapeNumber);
-		
+
 		if (cdev_node)
 		{
 			flags = 0;
-			
+
 			return true;
 		}
 	}
-	
+
 	return false;
 }
 
@@ -199,10 +201,10 @@ IOSCSITape::StartDeviceSupport(void)
 			   GetVendorString(),
 			   GetProductString(),
 			   GetRevisionString());
-	
+
 	GetDeviceDetails();
 	GetDeviceBlockLimits();
-	
+
 	fileno = -1;
 	blkno = -1;
 }
@@ -296,7 +298,7 @@ int st_rewind(IOSCSITape *st)
 		st->blkno = 0;
 		return KERN_SUCCESS;
 	}
-	
+
 	return ENODEV;
 }
 
@@ -321,10 +323,10 @@ int st_space(IOSCSITape *st, SCSISpaceCode type, int number)
 					break;
 			}
 		}
-		
+
 		return KERN_SUCCESS;
 	}
-	
+
 	return ENODEV;
 }
 
@@ -337,10 +339,10 @@ int st_write_filemarks(IOSCSITape *st, int number)
 			st->fileno += number;
 			st->blkno = 0;
 		}
-		
+
 		return KERN_SUCCESS;
 	}
-	
+
 	return ENODEV;
 }
 
@@ -348,25 +350,25 @@ int st_unload(IOSCSITape *st)
 {
 	if (st->LoadUnload(0) == kIOReturnSuccess)
 		return KERN_SUCCESS;
-	
+
 	return ENODEV;
 }
 
 int st_rdpos(IOSCSITape *st, bool vendor, unsigned int *data)
 {
 	SCSI_ReadPositionShortForm pos = { 0 };
-	
+
 	if (st->ReadPosition(&pos, vendor) == kIOReturnSuccess)
 	{
 		if (pos.flags & kSCSIReadPositionShortForm_LogicalObjectLocationUnknown)
 			return (ENOTSUP);
-		
+
 		*data = pos.firstLogicalObjectLocation;
-		
+
 		return KERN_SUCCESS;
 	}
-	
-	return ENODEV;	
+
+	return ENODEV;
 }
 
 int st_set_blocksize(IOSCSITape *st, int number)
@@ -378,11 +380,11 @@ int st_set_blocksize(IOSCSITape *st, int number)
 	{
 		return (EINVAL);
 	}
-	
+
 	if (st->SetBlockSize(number) == kIOReturnSuccess)
 		return KERN_SUCCESS;
-	
-	return (ENODEV);	
+
+	return (ENODEV);
 }
 
 #if 0
@@ -395,7 +397,7 @@ int st_open(dev_t dev, int flags, int devtype, struct proc *p)
 {
 	IOSCSITape *st = IOSCSITape::devices[minor(dev)];
 	int error = ENXIO;
-	
+
 	if (st->flags & ST_DEVOPEN)
 		error = EBUSY;
 	else
@@ -403,7 +405,7 @@ int st_open(dev_t dev, int flags, int devtype, struct proc *p)
 		st->flags |= ST_DEVOPEN;
 		error = KERN_SUCCESS;
 	}
-	
+
 	return error;
 }
 
@@ -417,12 +419,12 @@ int st_close(dev_t dev, int flags, int devtype, struct proc *p)
 	{
 		st_write_filemarks(st, 2);
 		st_space(st, kSCSISpaceCode_Filemarks, -1);
-		
+
 		st->flags &= ~ST_WRITTEN;
 	}
-	
+
 	st->flags &= ~ST_DEVOPEN;
-	
+
 	return KERN_SUCCESS;
 }
 
@@ -433,21 +435,21 @@ int st_readwrite(dev_t dev, struct uio *uio, int ioflag)
 	int					status		= ENOSYS;
 	IOReturn			opStatus	= kIOReturnError;
 	int					lastRealizedBytes = 0;
-	
+
 	if (dataBuffer == 0)
 		return ENOMEM;
-	
+
 	dataBuffer->prepare();
-	
+
 	opStatus = st->ReadWrite(dataBuffer, &lastRealizedBytes);
-	
+
 	dataBuffer->complete();
 	dataBuffer->release();
-	
+
 	if (opStatus == kIOReturnSuccess)
 	{
 		uio_setresid(uio, uio_resid(uio) - lastRealizedBytes);
-		
+
 		if (st->blkno != -1)
 		{
 			if (st->IsFixedBlockSize())
@@ -465,10 +467,10 @@ int st_readwrite(dev_t dev, struct uio *uio, int ioflag)
 			st->fileno++;
 			st->blkno = 0;
 		}
-		
+
 		status = KERN_SUCCESS;
 	}
-	
+
 	return status;
 }
 
@@ -479,7 +481,7 @@ int st_ioctl(dev_t dev, u_long cmd, caddr_t data, int fflag, struct proc *p)
 	struct mtget *g = (struct mtget *) data;
 	int number = mt->mt_count;
 	int error = 0;
-	
+
 	switch (cmd)
 	{
 		case MTIOCGET:
@@ -492,7 +494,7 @@ int st_ioctl(dev_t dev, u_long cmd, caddr_t data, int fflag, struct proc *p)
 			g->mt_dsreg = st->flags;	/* report raw driver flags */
 			g->mt_erreg = st->sense_flags;
 			/* TODO: Implement the full mtget struct */
-			
+
 			break;
 		case MTIOCTOP:
 			switch (mt->mt_op)
@@ -537,7 +539,7 @@ int st_ioctl(dev_t dev, u_long cmd, caddr_t data, int fflag, struct proc *p)
 		default:
 			error = ENOTTY;
 	}
-	
+
 	return error;
 }
 
@@ -559,12 +561,12 @@ IOSCSITape::DoSCSICommand(
 {
 	SCSITaskStatus		taskStatus		= kSCSITaskStatus_DeliveryFailure;
 	SCSIServiceResponse	serviceResponse	= kSCSIServiceResponse_SERVICE_DELIVERY_OR_TARGET_FAILURE;
-	
+
 	require((request != 0), ErrorExit);
-	
+
 	serviceResponse = SendCommand(request, timeoutDuration);
 	sense_flags = 0;
-	
+
 	if (serviceResponse != kSCSIServiceResponse_TASK_COMPLETE)
 	{
 		STATUS_LOG("unknown service response: 0x%x", serviceResponse);
@@ -573,7 +575,7 @@ IOSCSITape::DoSCSICommand(
 	else
 	{
 		taskStatus = GetTaskStatus(request);
-		
+
 		if (taskStatus == kSCSITaskStatus_CHECK_CONDITION)
 		{
 			/* Get and interpret SCSI SENSE information */
@@ -592,13 +594,13 @@ IOSCSITape::DoSCSICommand(
 				flags &= ~ST_WRITTEN;
 		}
 	}
-	
+
 	/* clear the write toggle bit in case the next command is not a
 	 * write */
 	flags &= ~ST_WRITTEN_TOGGLE;
-	
+
 ErrorExit:
-	
+
 	return taskStatus;
 }
 
@@ -614,30 +616,30 @@ IOSCSITape::GetSense(SCSITaskIdentifier request)
 	SCSI_Sense_Data		senseBuffer = { 0 };
 	bool				validSense = false;
 	SCSIServiceResponse	serviceResponse = kSCSIServiceResponse_SERVICE_DELIVERY_OR_TARGET_FAILURE;
-	
-	IOMemoryDescriptor *bufferDesc = IOMemoryDescriptor::withAddress((void *)&senseBuffer, 
-																	 sizeof(senseBuffer), 
+
+	IOMemoryDescriptor *bufferDesc = IOMemoryDescriptor::withAddress((void *)&senseBuffer,
+																	 sizeof(senseBuffer),
 																	 kIODirectionIn);
-	
+
 	if (GetTaskStatus(request) == kSCSITaskStatus_CHECK_CONDITION)
 	{
 		validSense = GetAutoSenseData(request, &senseBuffer);
-		
+
 		if (validSense == false)
 		{
 			if (REQUEST_SENSE(request, bufferDesc, kSenseDefaultSize, 0) == true)
 				serviceResponse = SendCommand(request, kTenSecondTimeoutInMS);
-			
+
 			if (serviceResponse == kSCSIServiceResponse_TASK_COMPLETE)
 				validSense = true;
 		}
-		
+
 		if (validSense == true)
 			InterpretSense(&senseBuffer);
 		else
 			STATUS_LOG("invalid or unretrievable SCSI SENSE");
 	}
-	
+
 	bufferDesc->release();
 }
 
@@ -651,7 +653,7 @@ IOSCSITape::InterpretSense(SCSI_Sense_Data *sense)
 	if ((sense->VALID_RESPONSE_CODE & kSENSE_RESPONSE_CODE_Mask) == kSENSE_RESPONSE_CODE_Current_Errors)
 	{
 		/* current errors, fixed format - 0x70 */
-		
+
 		// sense->VALID_RESPONSE_CODE & kSENSE_DATA_VALID
 
 		if (key  == kSENSE_KEY_NOT_READY &&
@@ -666,7 +668,7 @@ IOSCSITape::InterpretSense(SCSI_Sense_Data *sense)
 				 ascq == 0x04)
 		{
 			STATUS_LOG("BEGINNING-OF-PARTITION/MEDIUM DETECTED");
-			
+
 			sense_flags |= SENSE_BOM;
 		}
 		else if (key  == kSENSE_KEY_BLANK_CHECK &&
@@ -675,7 +677,7 @@ IOSCSITape::InterpretSense(SCSI_Sense_Data *sense)
 				/* sense->SENSE_KEY & kSENSE_EOM_Mask */
 		{
 			STATUS_LOG("END-OF-DATA DETECTED");
-			
+
 			sense_flags |= SENSE_EOD;
 		}
 		else if ((sense->SENSE_KEY & kSENSE_FILEMARK_Mask) ||
@@ -684,7 +686,7 @@ IOSCSITape::InterpretSense(SCSI_Sense_Data *sense)
 				  ascq == 0x01))
 		{
 			STATUS_LOG("FILEMARK DETECTED");
-			
+
 			sense_flags |= SENSE_FILEMARK;
 		}
 		else
@@ -697,7 +699,7 @@ IOSCSITape::InterpretSense(SCSI_Sense_Data *sense)
 
 			int i;
 			unsigned char *bytes = (unsigned char *)sense;
-			
+
 			IOLog("SCSI SENSE DATA: ");
 			for (i = 0; i < sizeof(SCSI_Sense_Data); i++)
 			{
@@ -714,21 +716,21 @@ IOSCSITape::TestUnitReady(void)
 	SCSITaskIdentifier	task			= NULL;
 	IOReturn			result			= kIOReturnError;
 	SCSITaskStatus		taskStatus		= kSCSITaskStatus_DeviceNotResponding;
-	
+
 	task = GetSCSITask();
-	
+
 	require((task != 0), ErrorExit);
-	
+
 	if (TEST_UNIT_READY(task, 0x00) == true)
 		taskStatus = DoSCSICommand(task, SCSI_NOMOTION_TIMEOUT);
-	
+
 	if (taskStatus == kSCSITaskStatus_GOOD)
 		result = kIOReturnSuccess;
-	
+
 	ReleaseSCSITask(task);
-	
+
 ErrorExit:
-	
+
 	return result;
 }
 
@@ -738,21 +740,21 @@ IOSCSITape::Rewind(void)
 	IOReturn			status		= kIOReturnError;
 	SCSITaskIdentifier	task		= NULL;
 	SCSITaskStatus		taskStatus	= kSCSITaskStatus_DeliveryFailure;
-	
+
 	task = GetSCSITask();
-	
+
 	require ((task != 0), ErrorExit);
-	
+
 	if (REWIND(task, 0, 0) == true)
 		taskStatus = DoSCSICommand(task, SCSI_MOTION_TIMEOUT);
-	
+
 	if (taskStatus == kSCSITaskStatus_GOOD)
 		status = kIOReturnSuccess;
-	
+
 	ReleaseSCSITask(task);
-	
+
 ErrorExit:
-	
+
 	return status;
 }
 
@@ -776,40 +778,40 @@ IOSCSITape::GetDeviceDetails(void)
 	dataBuffer = IOMemoryDescriptor::withAddress(&modeData,
 												 sizeof(modeData),
 												 kIODirectionIn);
-	
+
 	require((dataBuffer != 0), ErrorExit);
-	
+
 	task = GetSCSITask();
-	
+
 	require((task != 0), ErrorExit);
 
-	if (MODE_SENSE_6(task, 
-					 dataBuffer, 
+	if (MODE_SENSE_6(task,
+					 dataBuffer,
 					 0x0,
 					 0x0,
 					 0x00,
-					 sizeof(SCSI_ModeSense_Default), 
+					 sizeof(SCSI_ModeSense_Default),
 					 0x00) == true)
 	{
 		taskStatus = DoSCSICommand(task, SCSI_NOMOTION_TIMEOUT);
 	}
-	
+
 	if (taskStatus == kSCSITaskStatus_GOOD)
 	{
 		/* copy mode data for next MODE SELECT */
 		bcopy(&modeData, &lastModeData, sizeof(SCSI_ModeSense_Default));
-		
-		blksize = 
+
+		blksize =
 			(modeData.descriptor.BLOCK_LENGTH[0] << 16) |
 			(modeData.descriptor.BLOCK_LENGTH[1] <<  8) |
 			 modeData.descriptor.BLOCK_LENGTH[2];
-		
+
 		density = modeData.descriptor.DENSITY_CODE;
 		flags &= ~(ST_READONLY | ST_BUFF_MODE);
-		
+
 		if (modeData.header.DEVICE_SPECIFIC_PARAMETER & SMH_DSP_WRITE_PROT)
 			flags |= ST_READONLY;
-		
+
 		if (modeData.header.DEVICE_SPECIFIC_PARAMETER & SMH_DSP_BUFF_MODE)
 			flags |= ST_BUFF_MODE;
 
@@ -817,15 +819,15 @@ IOSCSITape::GetDeviceDetails(void)
 				   density, blksize,
 				   flags & ST_READONLY ? "protected" : "enabled",
 				   flags & ST_BUFF_MODE ? "" : "un");
-		
+
 		status = kIOReturnSuccess;
 	}
-	
+
 	ReleaseSCSITask(task);
 	dataBuffer->release();
-	
+
 ErrorExit:
-	
+
 	return status;
 }
 
@@ -836,37 +838,37 @@ IOSCSITape::SetDeviceDetails(SCSI_ModeSense_Default *modeData)
 	IOMemoryDescriptor *	dataBuffer	= NULL;
 	SCSITaskIdentifier		task		= NULL;
 	SCSITaskStatus			taskStatus	= kSCSITaskStatus_DeviceNotResponding;
-	
+
 	dataBuffer = IOMemoryDescriptor::withAddress(modeData,
 												 sizeof(SCSI_ModeSense_Default),
 												 kIODirectionOut);
-	
+
 	require((dataBuffer != 0), ErrorExit);
-	
+
 	task = GetSCSITask();
-	
+
 	require((task != 0), ErrorExit);
-	
-	if (MODE_SELECT_6(task, 
-					  dataBuffer, 
+
+	if (MODE_SELECT_6(task,
+					  dataBuffer,
 					  0x0, // PF
 					  0x0, // SP
-					  sizeof(SCSI_ModeSense_Default), 
+					  sizeof(SCSI_ModeSense_Default),
 					  0x00) == true)
 	{
 		taskStatus = DoSCSICommand(task, SCSI_NOMOTION_TIMEOUT);
 	}
-	
+
 	if (taskStatus == kSCSITaskStatus_GOOD)
 	{
 		status = kIOReturnSuccess;
 	}
-	
+
 	ReleaseSCSITask(task);
 	dataBuffer->release();
-	
+
 ErrorExit:
-	
+
 	return status;
 }
 
@@ -875,17 +877,17 @@ IOSCSITape::SetBlockSize(int size)
 {
 	IOReturn				status	= kIOReturnError;
 	SCSI_ModeSense_Default	newMode;
-	
+
 	bcopy(&lastModeData, &newMode, sizeof(SCSI_ModeSense_Default));
-	
+
 	newMode.header.MODE_DATA_LENGTH = 0;
 	newMode.descriptor.BLOCK_LENGTH[0] = (size >> 16) & 0xFF;
 	newMode.descriptor.BLOCK_LENGTH[1] = (size >>  8) & 0xFF;
 	newMode.descriptor.BLOCK_LENGTH[2] =  size        & 0xFF;
-	
+
 	if ((status = SetDeviceDetails(&newMode)) == kIOReturnSuccess)
 		GetDeviceDetails();
-	
+
 	return status;
 }
 
@@ -897,43 +899,43 @@ IOSCSITape::GetDeviceBlockLimits(void)
 	UInt8					blockLimitsData[6]	= { 0 };
 	SCSITaskStatus			taskStatus		= kSCSITaskStatus_DeliveryFailure;
 	IOMemoryDescriptor *	dataBuffer		= NULL;
-	
-	dataBuffer = IOMemoryDescriptor::withAddress(&blockLimitsData, 
-												 sizeof(blockLimitsData), 
+
+	dataBuffer = IOMemoryDescriptor::withAddress(&blockLimitsData,
+												 sizeof(blockLimitsData),
 												 kIODirectionIn);
 
 	require ((dataBuffer != 0), ErrorExit);
-	
+
 	task = GetSCSITask();
-	
+
 	require ((task != 0), ErrorExit);
-	
+
 	if (READ_BLOCK_LIMITS(task, dataBuffer, 0x00) == true)
 		taskStatus = DoSCSICommand(task, SCSI_NOMOTION_TIMEOUT);
-	
+
 	if (taskStatus == kSCSITaskStatus_GOOD)
 	{
 		// blkgran = blockLimitsData[0] & 0x1F;
-		
+
 		blkmin =
 			(blockLimitsData[4] <<  8) |
 			 blockLimitsData[5];
-		
+
 		blkmax =
 			(blockLimitsData[1] << 16) |
 			(blockLimitsData[2] <<  8) |
 			 blockLimitsData[3];
-		
+
 		STATUS_LOG("min/max block size: %d/%d", blkmin, blkmax);
-		
+
 		status = kIOReturnSuccess;
 	}
 
 	ReleaseSCSITask(task);
 	dataBuffer->release();
-	
+
 ErrorExit:
-	
+
 	return status;
 }
 
@@ -943,24 +945,24 @@ IOSCSITape::WriteFilemarks(int count)
 	SCSITaskIdentifier	task		= NULL;
 	IOReturn			status		= kIOReturnError;
 	SCSITaskStatus		taskStatus	= kSCSITaskStatus_No_Status;
-	
+
 	task = GetSCSITask();
-	
+
 	require((task != 0), ErrorExit);
 
 	flags |= ST_WRITTEN_TOGGLE;
 
 	if (WRITE_FILEMARKS_6(task, 0x0, 0x0, count, 0) == true)
 		taskStatus = DoSCSICommand(task, SCSI_MOTION_TIMEOUT);
-	
+
 	if (taskStatus == kSCSITaskStatus_GOOD)
 		status = kIOReturnSuccess;
-	
+
 	ReleaseSCSITask(task);
-	
+
 ErrorExit:
-	
-	return status;	
+
+	return status;
 }
 
 IOReturn
@@ -969,22 +971,22 @@ IOSCSITape::Space(SCSISpaceCode type, int count)
 	SCSITaskIdentifier	task			= NULL;
 	IOReturn			status			= kIOReturnError;
 	SCSITaskStatus		taskStatus		= kSCSITaskStatus_No_Status;
-	
+
 	task = GetSCSITask();
-	
+
 	require((task != 0), ErrorExit);
-	
+
 	if (SPACE_6(task, type, count, 0) == true)
 		taskStatus = DoSCSICommand(task, SCSI_MOTION_TIMEOUT);
-	
+
 	if (taskStatus == kSCSITaskStatus_GOOD)
 		status = kIOReturnSuccess;
-	
+
 	ReleaseSCSITask(task);
-	
+
 ErrorExit:
-	
-	return status;	
+
+	return status;
 }
 
 IOReturn
@@ -993,21 +995,21 @@ IOSCSITape::LoadUnload(int loadUnload)
 	SCSITaskIdentifier	task			= NULL;
 	IOReturn			status			= kIOReturnError;
 	SCSITaskStatus		taskStatus		= kSCSITaskStatus_DeviceNotResponding;
-	
+
 	task = GetSCSITask();
-	
+
 	require((task != 0), ErrorExit);
-	
+
 	if (LOAD_UNLOAD(task, 0, 0, 0, 0, loadUnload, 0) == true)
 		taskStatus = DoSCSICommand(task, SCSI_MOTION_TIMEOUT);
-	
+
 	if (taskStatus == kSCSITaskStatus_GOOD)
 		status = kIOReturnSuccess;
-	
+
 	ReleaseSCSITask(task);
-	
+
 ErrorExit:
-	
+
 	return status;
 }
 
@@ -1019,62 +1021,62 @@ IOSCSITape::ReadPosition(SCSI_ReadPositionShortForm *readPos, bool vendor)
 	SCSITaskStatus			taskStatus		= kSCSITaskStatus_DeviceNotResponding;
 	IOMemoryDescriptor *	dataBuffer		= NULL;
 	UInt8					readPosData[20] = { 0 };
-	
-	dataBuffer = IOMemoryDescriptor::withAddress(&readPosData, 
-												 sizeof(readPosData), 
+
+	dataBuffer = IOMemoryDescriptor::withAddress(&readPosData,
+												 sizeof(readPosData),
 												 kIODirectionIn);
-	
+
 	require((dataBuffer != 0), ErrorExit);
-	
+
 	task = GetSCSITask();
-	
+
 	require((task != 0), ErrorExit);
-	
-	if (READ_POSITION(task, 
-					  dataBuffer, 
-					  (vendor ? kSCSIReadPositionServiceAction_ShortFormVendorSpecific : kSCSIReadPositionServiceAction_ShortFormBlockID), 
-					  0x0, 
+
+	if (READ_POSITION(task,
+					  dataBuffer,
+					  (vendor ? kSCSIReadPositionServiceAction_ShortFormVendorSpecific : kSCSIReadPositionServiceAction_ShortFormBlockID),
+					  0x0,
 					  0x00) == true)
 	{
 		taskStatus = DoSCSICommand(task, SCSI_NOMOTION_TIMEOUT);
 	}
-	
+
 	if (taskStatus == kSCSITaskStatus_GOOD)
 	{
 		readPos->flags = readPosData[0];
 		readPos->partitionNumber = readPosData[1];
-		
+
 		readPos->firstLogicalObjectLocation =
 			(readPosData[4]  << 24) |
 			(readPosData[5]  << 16) |
 			(readPosData[6]  <<  8) |
 			 readPosData[7];
-		
+
 		readPos->lastLogicalObjectLocation =
 			(readPosData[8]  << 24) |
 			(readPosData[9]  << 16) |
 			(readPosData[10] <<  8) |
 			 readPosData[11];
-		
+
 		readPos->logicalObjectsInObjectBuffer =
 			(readPosData[13] << 16) |
 			(readPosData[14] <<  8) |
 			 readPosData[15];
-		
+
 		readPos->bytesInObjectBuffer =
 			(readPosData[16] << 24) |
 			(readPosData[17] << 16) |
 			(readPosData[18] <<  8) |
 			 readPosData[19];
-		
+
 		status = kIOReturnSuccess;
 	}
-	
+
 	ReleaseSCSITask(task);
 	dataBuffer->release();
-	
+
 ErrorExit:
-	
+
 	return status;
 }
 
@@ -1086,9 +1088,9 @@ IOSCSITape::ReadWrite(IOMemoryDescriptor *dataBuffer, int *realizedBytes)
 	SCSITaskStatus		taskStatus		= kSCSITaskStatus_No_Status;
 	bool				cmdStatus		= false;
 	int					transferSize	= 0;
-	
+
 	require((dataBuffer != 0), ErrorExit);
-	
+
 	transferSize = dataBuffer->getLength();
 
 	if (IsFixedBlockSize())
@@ -1098,19 +1100,19 @@ IOSCSITape::ReadWrite(IOMemoryDescriptor *dataBuffer, int *realizedBytes)
 			STATUS_LOG("must be multiple of block size");
 			return kIOReturnNotAligned;
 		}
-		
+
 		transferSize /= blksize;
 	}
-	
+
 	task = GetSCSITask();
 	require((task != 0), ErrorExit);
-	
+
 	if (dataBuffer->getDirection() == kIODirectionIn)
 	{
 		cmdStatus = READ_6(
-			task, 
-			dataBuffer, 
-			blksize, 
+			task,
+			dataBuffer,
+			blksize,
 			0x0,
 			IsFixedBlockSize() ? 0x1 : 0x0,
 			transferSize,
@@ -1119,28 +1121,28 @@ IOSCSITape::ReadWrite(IOMemoryDescriptor *dataBuffer, int *realizedBytes)
 	else
 	{
 		cmdStatus = WRITE_6(
-			task, 
-			dataBuffer, 
-			blksize, 
+			task,
+			dataBuffer,
+			blksize,
 			IsFixedBlockSize() ? 0x1 : 0x0,
-			transferSize, 
+			transferSize,
 			0x00);
 
 		flags |= ST_WRITTEN_TOGGLE;
 	}
-	
+
 	if (cmdStatus == true)
 		taskStatus = DoSCSICommand(task, SCSI_MOTION_TIMEOUT);
-		
+
 	*realizedBytes = GetRealizedDataTransferCount(task);
 
 	if (taskStatus == kSCSITaskStatus_GOOD)
 		status = kIOReturnSuccess;
-	
+
 	ReleaseSCSITask(task);
-	
+
 ErrorExit:
-	
+
 	return status;
 }
 
@@ -1158,28 +1160,28 @@ IOSCSITape::ERASE_6(
 	SCSICmdField1Byte	CONTROL)
 {
 	bool result = false;
-	
+
 	require(IsParameterValid(IMMED, kSCSICmdFieldMask1Bit), ErrorExit);
 	require(IsParameterValid(LONG, kSCSICmdFieldMask1Bit), ErrorExit);
 	require(IsParameterValid(CONTROL, kSCSICmdFieldMask1Byte), ErrorExit);
-	
-	SetCommandDescriptorBlock(request, 
-							  kSCSICmd_ERASE, 
+
+	SetCommandDescriptorBlock(request,
+							  kSCSICmd_ERASE,
 							  (LONG << 1) |
-							   IMMED, 
-							  0x00, 
-							  0x00, 
-							  0x00, 
+							   IMMED,
+							  0x00,
+							  0x00,
+							  0x00,
 							  CONTROL);
-	
+
 	SetDataTransferDirection(request, kSCSIDataTransfer_NoDataTransfer);
-	
+
 	SetTimeoutDuration(request, SCSI_MOTION_TIMEOUT);
-	
+
 ErrorExit:
-	
+
 	return result;
-}				   
+}
 
 bool
 IOSCSITape::READ_6(
@@ -1193,41 +1195,41 @@ IOSCSITape::READ_6(
 {
 	UInt32	requestedByteCount	= 0;
 	bool	result				= false;
-	
+
 	require(IsParameterValid(SILI, kSCSICmdFieldMask1Bit), ErrorExit);
 	require(IsParameterValid(FIXED, kSCSICmdFieldMask1Bit), ErrorExit);
 	require(IsParameterValid(TRANSFER_LENGTH, kSCSICmdFieldMask3Byte), ErrorExit);
 	require(IsParameterValid(CONTROL, kSCSICmdFieldMask1Byte), ErrorExit);
-	
+
 	if (FIXED)
 		requestedByteCount = TRANSFER_LENGTH * blockSize;
 	else
 		requestedByteCount = TRANSFER_LENGTH;
-	
+
 	require((readBuffer != 0), ErrorExit);
 	require((readBuffer->getLength() >= requestedByteCount), ErrorExit);
-	
-	SetCommandDescriptorBlock(request, 
-							  kSCSICmd_READ_6, 
+
+	SetCommandDescriptorBlock(request,
+							  kSCSICmd_READ_6,
 							  (SILI << 1) |
-							   FIXED, 
-							  (TRANSFER_LENGTH >> 16) & 0xFF, 
-							  (TRANSFER_LENGTH >>  8) & 0xFF, 
-							   TRANSFER_LENGTH        & 0xFF, 
+							   FIXED,
+							  (TRANSFER_LENGTH >> 16) & 0xFF,
+							  (TRANSFER_LENGTH >>  8) & 0xFF,
+							   TRANSFER_LENGTH        & 0xFF,
 							  CONTROL);
-	
+
 	SetDataBuffer(request, readBuffer);
-	
+
 	SetRequestedDataTransferCount(request, requestedByteCount);
-	
+
 	SetDataTransferDirection(request, kSCSIDataTransfer_FromTargetToInitiator);
-	
+
 	SetTimeoutDuration(request, SCSI_MOTION_TIMEOUT);
-	
+
 	result = true;
-	
+
 ErrorExit:
-	
+
 	return result;
 }
 
@@ -1239,33 +1241,33 @@ IOSCSITape::SPACE_6(
 	SCSICmdField1Byte	CONTROL)
 {
 	bool result = false;
-	
+
 	require(IsParameterValid(CODE, kSCSICmdFieldMask4Bit), ErrorExit);
-	
+
 	/* allow a two's complement negative number in the 3-byte integer
 	 * space to not cause an error with IsParameterValid() */
 	if ((COUNT & 0xFF800000) == 0xFF800000)
 		COUNT = COUNT & 0xFFFFFF;
-	
+
 	require(IsParameterValid(COUNT, kSCSICmdFieldMask3Byte), ErrorExit);
 	require(IsParameterValid(CONTROL, kSCSICmdFieldMask1Byte), ErrorExit);
-	
-	SetCommandDescriptorBlock(request, 
-							  kSCSICmd_SPACE, 
-							  CODE, 
-							  (COUNT >> 16) & 0xFF, 
-							  (COUNT >>  8) & 0xFF, 
-							   COUNT        & 0xFF, 
+
+	SetCommandDescriptorBlock(request,
+							  kSCSICmd_SPACE,
+							  CODE,
+							  (COUNT >> 16) & 0xFF,
+							  (COUNT >>  8) & 0xFF,
+							   COUNT        & 0xFF,
 							  CONTROL);
-	
+
 	SetDataTransferDirection(request, kSCSIDataTransfer_NoDataTransfer);
-	
+
 	SetTimeoutDuration(request, SCSI_MOTION_TIMEOUT);
-	
+
 	result = true;
-	
+
 ErrorExit:
-	
+
 	return result;
 }
 
@@ -1280,39 +1282,39 @@ IOSCSITape::WRITE_6(
 {
 	UInt32	requestedByteCount	= 0;
 	bool	result				= false;
-	
+
 	require(IsParameterValid(FIXED, kSCSICmdFieldMask1Bit), ErrorExit);
 	require(IsParameterValid(TRANSFER_LENGTH, kSCSICmdFieldMask3Byte), ErrorExit);
 	require(IsParameterValid(CONTROL, kSCSICmdFieldMask1Byte), ErrorExit);
-	
+
 	if (FIXED)
 		requestedByteCount = TRANSFER_LENGTH * blockSize;
 	else
 		requestedByteCount = TRANSFER_LENGTH;
-	
+
 	require((writeBuffer != 0), ErrorExit);
 	require((writeBuffer->getLength() >= requestedByteCount), ErrorExit);
-	
-	SetCommandDescriptorBlock(request, 
-							  kSCSICmd_WRITE_6, 
-							  FIXED, 
-							  (TRANSFER_LENGTH >> 16) & 0xFF, 
-							  (TRANSFER_LENGTH >>  8) & 0xFF, 
-							   TRANSFER_LENGTH        & 0xFF, 
+
+	SetCommandDescriptorBlock(request,
+							  kSCSICmd_WRITE_6,
+							  FIXED,
+							  (TRANSFER_LENGTH >> 16) & 0xFF,
+							  (TRANSFER_LENGTH >>  8) & 0xFF,
+							   TRANSFER_LENGTH        & 0xFF,
 							  CONTROL);
-	
+
 	SetDataBuffer(request, writeBuffer);
-	
+
 	SetRequestedDataTransferCount(request, requestedByteCount);
-	
+
 	SetDataTransferDirection(request, kSCSIDataTransfer_FromInitiatorToTarget);
-	
+
 	SetTimeoutDuration(request, SCSI_MOTION_TIMEOUT);
-	
+
 	result = true;
-	
+
 ErrorExit:
-	
+
 	return result;
 }
 
@@ -1325,29 +1327,29 @@ IOSCSITape::WRITE_FILEMARKS_6(
 	SCSICmdField1Byte	CONTROL)
 {
 	bool result = false;
-	
+
 	require(IsParameterValid(WSMK, kSCSICmdFieldMask1Bit), ErrorExit);
 	require(IsParameterValid(IMMED, kSCSICmdFieldMask1Bit), ErrorExit);
 	require(IsParameterValid(TRANSFER_LENGTH, kSCSICmdFieldMask3Byte), ErrorExit);
 	require(IsParameterValid(CONTROL, kSCSICmdFieldMask1Byte), ErrorExit);
-	
-	SetCommandDescriptorBlock(request, 
-							  kSCSICmd_WRITE_FILEMARKS, 
+
+	SetCommandDescriptorBlock(request,
+							  kSCSICmd_WRITE_FILEMARKS,
 							  (WSMK << 1) |
-							   IMMED, 
-							  (TRANSFER_LENGTH >> 16) & 0xFF, 
-							  (TRANSFER_LENGTH >>  8) & 0xFF, 
-							   TRANSFER_LENGTH        & 0xFF, 
+							   IMMED,
+							  (TRANSFER_LENGTH >> 16) & 0xFF,
+							  (TRANSFER_LENGTH >>  8) & 0xFF,
+							   TRANSFER_LENGTH        & 0xFF,
 							  CONTROL);
-	
+
 	SetDataTransferDirection(request, kSCSIDataTransfer_NoDataTransfer);
-	
+
 	SetTimeoutDuration(request, SCSI_MOTION_TIMEOUT);
-	
+
 	result = true;
-	
+
 ErrorExit:
-	
+
 	return result;
 }
 
@@ -1368,33 +1370,33 @@ IOSCSITape::LOAD_UNLOAD(
 	SCSICmdField1Byte	CONTROL)
 {
 	bool result = false;
-	
+
 	require(IsParameterValid(IMMED, kSCSICmdFieldMask1Bit), ErrorExit);
 	require(IsParameterValid(HOLD, kSCSICmdFieldMask1Bit), ErrorExit);
 	require(IsParameterValid(EOT, kSCSICmdFieldMask1Bit), ErrorExit);
 	require(IsParameterValid(RETEN, kSCSICmdFieldMask1Bit), ErrorExit);
 	require(IsParameterValid(LOAD, kSCSICmdFieldMask1Bit), ErrorExit);
 	require(IsParameterValid(CONTROL, kSCSICmdFieldMask1Byte), ErrorExit);
-	
-	SetCommandDescriptorBlock(request, 
-							  kSCSICmd_LOAD_UNLOAD, 
-							  IMMED, 
-							  0x00, 
-							  0x00, 
+
+	SetCommandDescriptorBlock(request,
+							  kSCSICmd_LOAD_UNLOAD,
+							  IMMED,
+							  0x00,
+							  0x00,
 							  (HOLD  << 3) |
 							  (EOT   << 2) |
 							  (RETEN << 1) |
-							   LOAD, 
+							   LOAD,
 							  CONTROL);
-	
+
 	SetDataTransferDirection(request, kSCSIDataTransfer_NoDataTransfer);
-	
+
 	SetTimeoutDuration(request, SCSI_MOTION_TIMEOUT);
-	
+
 	result = true;
-	
+
 ErrorExit:
-	
+
 	return result;
 }
 
@@ -1405,32 +1407,32 @@ IOSCSITape::READ_BLOCK_LIMITS(
 	SCSICmdField1Byte		CONTROL)
 {
 	bool result = false;
-	
+
 	require(IsParameterValid(CONTROL, kSCSICmdFieldMask1Byte), ErrorExit);
-	
+
 	require((readBuffer != 0), ErrorExit);
 	require((readBuffer->getLength() >= 6), ErrorExit);
-	
-	SetCommandDescriptorBlock(request, 
-							  kSCSICmd_READ_BLOCK_LIMITS, 
-							  0x00, 
-							  0x00, 
-							  0x00, 
-							  0x00, 
+
+	SetCommandDescriptorBlock(request,
+							  kSCSICmd_READ_BLOCK_LIMITS,
+							  0x00,
+							  0x00,
+							  0x00,
+							  0x00,
 							  CONTROL);
-	
+
 	SetDataBuffer(request, readBuffer);
-	
+
 	SetRequestedDataTransferCount(request, 6);
-	
+
 	SetDataTransferDirection(request, kSCSIDataTransfer_FromTargetToInitiator);
-	
+
 	SetTimeoutDuration(request, SCSI_NOMOTION_TIMEOUT);
-	
+
 	result = true;
-	
+
 ErrorExit:
-	
+
 	return result;
 }
 
@@ -1444,13 +1446,13 @@ IOSCSITape::READ_POSITION(
 {
 	bool	result	= false;
 	int		count	= 0;
-	
+
 	require(IsParameterValid(SERVICE_ACTION, kSCSICmdFieldMask5Bit), ErrorExit);
 	require(IsParameterValid(ALLOCATION_LENGTH, kSCSICmdFieldMask2Byte), ErrorExit);
 	require(IsParameterValid(CONTROL, kSCSICmdFieldMask1Byte), ErrorExit);
-	
+
 	require((buffer != 0), ErrorExit);
-	
+
 	switch (SERVICE_ACTION)
 	{
 		case kSCSIReadPositionServiceAction_ShortFormBlockID:
@@ -1468,33 +1470,33 @@ IOSCSITape::READ_POSITION(
 			count = buffer->getLength();
 			break;
 	}
-	
+
 	require((buffer->getLength() >= count), ErrorExit);
-	
-	SetCommandDescriptorBlock(request, 
-							  kSCSICmd_READ_POSITION, 
-							  SERVICE_ACTION, 
-							  0x00, 
-							  0x00, 
-							  0x00, 
+
+	SetCommandDescriptorBlock(request,
+							  kSCSICmd_READ_POSITION,
+							  SERVICE_ACTION,
+							  0x00,
+							  0x00,
+							  0x00,
 							  0x00,
 							  0x00,
 							  (ALLOCATION_LENGTH >> 8) & 0xFF,
 							   ALLOCATION_LENGTH       & 0xFF,
 							  CONTROL);
-	
+
 	SetDataBuffer(request, buffer);
-	
+
 	SetRequestedDataTransferCount(request, count);
-	
+
 	SetDataTransferDirection(request, kSCSIDataTransfer_FromTargetToInitiator);
-	
+
 	SetTimeoutDuration(request, SCSI_NOMOTION_TIMEOUT);
-	
+
 	result = true;
-	
+
 ErrorExit:
-	
+
 	return result;
 }
 
@@ -1505,25 +1507,25 @@ IOSCSITape::REWIND(
 	SCSICmdField1Byte	CONTROL)
 {
 	bool result = false;
-	
+
 	require(IsParameterValid(IMMED, kSCSICmdFieldMask1Bit), ErrorExit);
 	require(IsParameterValid(CONTROL, kSCSICmdFieldMask1Byte), ErrorExit);
-	
-	SetCommandDescriptorBlock(request, 
-							  kSCSICmd_REWIND, 
-							  IMMED, 
-							  0x00, 
-							  0x00, 
-							  0x00, 
+
+	SetCommandDescriptorBlock(request,
+							  kSCSICmd_REWIND,
+							  IMMED,
+							  0x00,
+							  0x00,
+							  0x00,
 							  CONTROL);
-	
+
 	SetDataTransferDirection(request, kSCSIDataTransfer_NoDataTransfer);
-	
+
 	SetTimeoutDuration(request, SCSI_MOTION_TIMEOUT);
-	
+
 	result = true;
-	
+
 ErrorExit:
-	
+
 	return result;
 }
